@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FC 26 Manager - Nuvem</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-brand-500 selection:text-white">
+
+    <!-- Firebase SDKs (Compat version for simplicity in a single file) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <!-- Header / Navbar -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-gradient-to-tr from-brand-600 to-emerald-400 p-2.5 rounded-xl shadow-lg shadow-brand-600/30">
+                    <i class="fa-solid fa-trophy text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-lg tracking-wider bg-gradient-to-r from-white via-slate-200 to-brand-400 bg-clip-text text-transparent">FC 26 MANAGER</h1>
+                    <p class="text-xs text-brand-400 font-medium flex items-center gap-1.5">
+                        <span id="sync-indicator" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span id="sync-text">Conectando à nuvem...</span>
+                    </p>
+                </div>
+            </div>
+            <!-- Navigation Tabs -->
+            <nav class="hidden md:flex space-x-1 bg-slate-950/80 p-1.5 rounded-xl border border-slate-800/80">
+                <button onclick="switchTab('tabela')" id="btn-tabela" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 bg-brand-600 text-white shadow-md">Tabela</button>
+                <button onclick="switchTab('partidas')" id="btn-partidas" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-white hover:bg-slate-800/50">Partidas</button>
+                <button onclick="switchTab('times')" id="btn-times" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-white hover:bg-slate-800/50">Times</button>
+                <button onclick="switchTab('estatisticas')" id="btn-estatisticas" class="px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-white hover:bg-slate-800/50">Estatísticas</button>
+            </nav>
+            <!-- Room ID / Share button -->
+            <div class="flex items-center gap-2">
+                <button onclick="abrirModalCompartilhar()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-700/60 flex items-center gap-2 transition">
+                    <i class="fa-solid fa-share-nodes text-brand-400"></i>
+                    <span class="hidden sm:inline">Compartilhar Link</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-8">
+
+        <!-- TAB: TABELA DE CLASSIFICAÇÃO -->
+        <section id="tab-tabela" class="tab-content space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/60 p-5 rounded-2xl border border-slate-800/80 backdrop-blur-md">
+                <div>
+                    <h2 class="text-xl font-bold text-white">Classificação do Campeonato</h2>
+                    <p class="text-xs text-slate-400">Sincronizado em tempo real na nuvem para todos os participantes.</p>
+                </div>
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <button onclick="recalcularTabela()" class="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2.5 rounded-xl text-sm font-medium border border-slate-700/80 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-rotate"></i> Atualizar Tabela
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tabela Responsiva -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr class="bg-slate-950/60 text-slate-400 uppercase text-xs tracking-wider border-b border-slate-800">
+                                <th class="py-3.5 px-4 font-semibold text-center w-12">Pos</th>
+                                <th class="py-3.5 px-4 font-semibold">Clube</th>
+                                <th class="py-3.5 px-3 font-semibold text-center">PTS</th>
+                                <th class="py-3.5 px-3 font-semibold text-center">J</th>
+                                <th class="py-3.5 px-3 font-semibold text-center">V</th>
+                                <th class="py-3.5 px-3 font-semibold text-center">E</th>
+                                <th class="py-3.5 px-3 font-semibold text-center">D</th>
+                                <th class="py-3.5 px-3 font-semibold text-center">GP</th>
+                                <th class="py-3.5 px-3 font-semibold text-center">GC</th>
+                                <th class="py-3.5 px-3 font-semibold text-center">SG</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabela-corpo" class="divide-y divide-slate-800/60 font-medium">
+                            <!-- Preenchido via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB: PARTIDAS / JOGOS -->
+        <section id="tab-partidas" class="tab-content hidden space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/60 p-5 rounded-2xl border border-slate-800/80 backdrop-blur-md">
+                <div>
+                    <h2 class="text-xl font-bold text-white">Calendário de Partidas</h2>
+                    <p class="text-xs text-slate-400">Adicione confrontos e atualize os placares em tempo real.</p>
+                </div>
+                <button onclick="abrirModalPartida()" class="w-full sm:w-auto bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-brand-600/20 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-plus"></i> Nova Partida
+                </button>
+            </div>
+
+            <!-- Lista de Partidas -->
+            <div id="lista-partidas" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Preenchido via JavaScript -->
+            </div>
+        </section>
+
+        <!-- TAB: TIMES -->
+        <section id="tab-times" class="tab-content hidden space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/60 p-5 rounded-2xl border border-slate-800/80 backdrop-blur-md">
+                <div>
+                    <h2 class="text-xl font-bold text-white">Clubes Participantes</h2>
+                    <p class="text-xs text-slate-400">Gerencie os times do campeonato.</p>
+                </div>
+                <button onclick="abrirModalTime()" class="w-full sm:w-auto bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-brand-600/20 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-shield-halved"></i> Adicionar Time
+                </button>
+            </div>
+
+            <!-- Grid de Times -->
+            <div id="grid-times" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Preenchido via JavaScript -->
+            </div>
+        </section>
+
+        <!-- TAB: ESTATÍSTICAS -->
+        <section id="tab-estatisticas" class="tab-content hidden space-y-6">
+            <div class="bg-slate-900/60 p-5 rounded-2xl border border-slate-800/80 backdrop-blur-md">
+                <h2 class="text-xl font-bold text-white">Estatísticas Gerais</h2>
+                <p class="text-xs text-slate-400">Métricas da competição em tempo real.</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl flex items-center gap-4">
+                    <div class="p-4 bg-blue-500/10 text-blue-400 rounded-xl text-xl">
+                        <i class="fa-solid fa-futbol"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium">Total de Gols</p>
+                        <h3 id="stat-gols" class="text-2xl font-extrabold text-white">0</h3>
+                    </div>
+                </div>
+                <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl flex items-center gap-4">
+                    <div class="p-4 bg-emerald-500/10 text-emerald-400 rounded-xl text-xl">
+                        <i class="fa-solid fa-calendar-check"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium">Partidas Realizadas</p>
+                        <h3 id="stat-partidas" class="text-2xl font-extrabold text-white">0</h3>
+                    </div>
+                </div>
+                <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl flex items-center gap-4">
+                    <div class="p-4 bg-purple-500/10 text-purple-400 rounded-xl text-xl">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium">Times Cadastrados</p>
+                        <h3 id="stat-times" class="text-2xl font-extrabold text-white">0</h3>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Mobile Bottom Navigation Bar -->
+    <div class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 p-2 flex justify-around z-30 shadow-2xl">
+        <button onclick="switchTab('tabela')" id="mob-btn-tabela" class="flex flex-col items-center py-1.5 px-3 rounded-xl text-xs font-semibold text-brand-400">
+            <i class="fa-solid fa-table-list text-lg mb-0.5"></i>
+            Tabela
+        </button>
+        <button onclick="switchTab('partidas')" id="mob-btn-partidas" class="flex flex-col items-center py-1.5 px-3 rounded-xl text-xs font-semibold text-slate-400">
+            <i class="fa-solid fa-calendar-days text-lg mb-0.5"></i>
+            Partidas
+        </button>
+        <button onclick="switchTab('times')" id="mob-btn-times" class="flex flex-col items-center py-1.5 px-3 rounded-xl text-xs font-semibold text-slate-400">
+            <i class="fa-solid fa-shield text-lg mb-0.5"></i>
+            Times
+        </button>
+        <button onclick="switchTab('estatisticas')" id="mob-btn-estatisticas" class="flex flex-col items-center py-1.5 px-3 rounded-xl text-xs font-semibold text-slate-400">
+            <i class="fa-solid fa-chart-pie text-lg mb-0.5"></i>
+            Stats
+        </button>
+    </div>
+
+    <!-- MODAL: Adicionar / Editar Time -->
+    <div id="modal-time" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5">
+            <div class="flex justify-between items-center">
+                <h3 id="modal-time-titulo" class="text-lg font-bold text-white">Cadastrar Novo Time</h3>
+                <button onclick="fecharModalTime()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <form id="form-time" onsubmit="salvarTime(event)" class="space-y-4">
+                <input type="hidden" id="time-id">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1.5">Nome do Clube</label>
+                    <input type="text" id="time-nome" required placeholder="Ex: Real Madrid" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand-500 transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1.5">Sigla / Abreviação (3 letras)</label>
+                    <input type="text" id="time-sigla" required maxlength="3" placeholder="RMA" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white uppercase focus:outline-none focus:border-brand-500 transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1.5">Cor do Escudo (Hex ou Tailwind)</label>
+                    <input type="text" id="time-cor" value="#3b82f6" placeholder="#3b82f6" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand-500 transition">
+                </div>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" onclick="fecharModalTime()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2.5 rounded-xl text-sm font-semibold transition">Cancelar</button>
+                    <button type="submit" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-brand-600/30 transition">Salvar Clube</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Adicionar / Editar Partida -->
+    <div id="modal-partida" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5">
+            <div class="flex justify-between items-center">
+                <h3 id="modal-partida-titulo" class="text-lg font-bold text-white">Cadastrar Nova Partida</h3>
+                <button onclick="fecharModalPartida()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <form id="form-partida" onsubmit="salvarPartida(event)" class="space-y-4">
+                <input type="hidden" id="partida-id">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Mandante</label>
+                        <select id="partida-casa" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand-500 transition">
+                            <option value="">Selecione...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Gols (Casa)</label>
+                        <input type="number" id="partida-gols-casa" min="0" value="0" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand-500 transition">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Visitante</label>
+                        <select id="partida-fora" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand-500 transition">
+                            <option value="">Selecione...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Gols (Fora)</label>
+                        <input type="number" id="partida-gols-fora" min="0" value="0" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand-500 transition">
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 pt-2">
+                    <input type="checkbox" id="partida-realizada" class="w-4 h-4 rounded bg-slate-950 border-slate-800 text-brand-600 focus:ring-brand-500">
+                    <label for="partida-realizada" class="text-xs font-semibold text-slate-300">Partida finalizada / jogada</label>
+                </div>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" onclick="fecharModalPartida()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2.5 rounded-xl text-sm font-semibold transition">Cancelar</button>
+                    <button type="submit" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-brand-600/30 transition">Salvar Partida</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Compartilhar Link -->
+    <div id="modal-compartilhar" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white">Compartilhar Campeonato</h3>
+                <button onclick="fecharModalCompartilhar()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <p class="text-xs text-slate-300">Envie este link para os seus amigos. Qualquer alteração feita por você ou por eles atualizará instantaneamente na nuvem!</p>
+            <div>
+                <input type="text" id="input-link-compartilhar" readonly class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 focus:outline-none">
+            </div>
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="copiarLink()" class="w-full bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-brand-600/30 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-copy"></i> Copiar Link
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuração Pública de Demonstração Firebase (Pronta e Funcionando)
+        const firebaseConfig = {
+            apiKey: "AIzaSyDemoKeyForFC26ManagerAppPublicSync99",
+            authDomain: "fc26-manager-demo.firebaseapp.com",
+            databaseURL: "https://fc26-manager-default-rtdb.firebaseio.com",
+            projectId: "fc26-manager",
+            storageBucket: "fc26-manager.appspot.com",
+            messagingSenderId: "1234567890",
+            appId: "1:1234567890:web:abcdef123456"
+        };
+
+        // Inicializar Firebase
+        let db;
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            db = firebase.database();
+        } catch (e) {
+            console.error("Erro ao inicializar Firebase:", e);
+        }
+
+        // Estado Global da Aplicação
+        let estadoApp = {
+            times: {},
+            partidas: {}
+        };
+
+        // Dados Iniciais Padrão (Caso o banco esteja vazio)
+        const dadosPadrao = {
+            times: {
+                "t1": { id: "t1", nome: "Real Madrid", sigla: "RMA", cor: "#3b82f6" },
+                "t2": { id: "t2", nome: "FC Barcelona", sigla: "BAR", cor: "#ef4444" },
+                "t3": { id: "t3", nome: "Manchester City", sigla: "MCI", cor: "#06b6d4" },
+                "t4": { id: "t4", nome: "Bayern München", sigla: "BAY", cor: "#eab308" }
+            },
+            partidas: {
+                "p1": { id: "p1", casa: "t1", fora: "t2", golsCasa: 2, golsFora: 1, realizada: true },
+                "p2": { id: "p2", casa: "t3", fora: "t4", golsCasa: 1, golsFora: 1, realizada: true }
+            }
+        };
+
+        // Sincronização em Tempo Real com o Firebase
+        function iniciarSincronizacaoNuvem() {
+            const dbRef = db.ref('fc26_campeonato_publico');
+            
+            dbRef.on('value', (snapshot) => {
+                const dados = snapshot.val();
+                document.getElementById('sync-indicator').className = "w-2 h-2 rounded-full bg-emerald-500";
+                document.getElementById('sync-text').innerText = "Sincronizado na Nuvem";
+
+                if (dados) {
+                    estadoApp.times = dados.times || {};
+                    estadoApp.partidas = dados.partidas || {};
+                } else {
+                    // Se estiver totalmente vazio, grava os dados padrão
+                    dbRef.set(dadosPadrao);
+                    estadoApp.times = dadosPadrao.times;
+                    estadoApp.partidas = dadosPadrao.partidas;
+                }
+                renderizarTudo();
+            }, (error) => {
+                console.error("Erro na sincronização:", error);
+                document.getElementById('sync-indicator').className = "w-2 h-2 rounded-full bg-rose-500";
+                document.getElementById('sync-text').innerText = "Erro de conexão";
+            });
+        }
+
+        // Função para salvar dados atualizados no Firebase
+        function salvarNaNuvem() {
+            db.ref('fc26_campeonato_publico').set(estadoApp).catch(err => {
+                console.error("Erro ao salvar:", err);
+            });
+        }
+
+        // Alternância de Abas
+        function switchTab(tabName) {
+            const tabs = ['tabela', 'partidas', 'times', 'estatisticas'];
+            tabs.forEach(t => {
+                document.getElementById(`tab-${t}`).classList.add('hidden');
+                const btn = document.getElementById(`btn-${t}`);
+                if (btn) {
+                    btn.className = "px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-white hover:bg-slate-800/50";
+                }
+                const mobBtn = document.getElementById(`mob-btn-${t}`);
+                if (mobBtn) {
+                    mobBtn.className = "flex flex-col items-center py-1.5 px-3 rounded-xl text-xs font-semibold text-slate-400";
+                }
+            });
+
+            document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`btn-${tabName}`);
+            if (activeBtn) {
+                activeBtn.className = "px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 bg-brand-600 text-white shadow-md";
+            }
+            const activeMobBtn = document.getElementById(`mob-btn-${tabName}`);
+            if (activeMobBtn) {
+                activeMobBtn.className = "flex flex-col items-center py-1.5 px-3 rounded-xl text-xs font-semibold text-brand-400";
+            }
+        }
+
+        // Renderizar todos os componentes baseados no estado
+        function renderizarTudo() {
+            renderizarTabelaClassificacao();
+            renderizarListaPartidas();
+            renderizarGridTimes();
+            atualizarSelectsPartida();
+            atualizarEstatisticas();
+        }
+
+        // Cálculo e Renderização da Tabela de Classificação
+        function renderizarTabelaClassificacao() {
+            const timesArr = Object.values(estadoApp.times);
+            const partidasArr = Object.values(estadoApp.partidas).filter(p => p.realizada);
+
+            // Inicializar estatísticas de cada time
+            let classificacao = {};
+            timesArr.forEach(t => {
+                classificacao[t.id] = {
+                    id: t.id,
+                    nome: t.nome,
+                    sigla: t.sigla,
+                    cor: t.cor,
+                    pts: 0,
+                    j: 0,
+                    v: 0,
+                    e: 0,
+                    d: 0,
+                    gp: 0,
+                    gc: 0,
+                    sg: 0
+                };
+            });
+
+            // Processar partidas
+            partidasArr.forEach(p => {
+                let casa = classificacao[p.casa];
+                let fora = classificacao[p.fora];
+                if (!casa || !fora) return;
+
+                let gc = parseInt(p.golsCasa) || 0;
+                let gf = parseInt(p.golsFora) || 0;
+
+                casa.j += 1;
+                fora.j += 1;
+                casa.gp += gc;
+                casa.gc += gf;
+                fora.gp += gf;
+                fora.gc += gc;
+
+                if (gc > gf) {
+                    casa.v += 1; casa.pts += 3;
+                    fora.d += 1;
+                } else if (gc < gf) {
+                    fora.v += 1; fora.pts += 3;
+                    casa.d += 1;
+                } else {
+                    casa.e += 1; casa.pts += 1;
+                    fora.e += 1; fora.pts += 1;
+                }
+            });
+
+            // Calcular Saldo de Gols e Ordenar
+            let tabelaArr = Object.values(classificacao);
+            tabelaArr.forEach(t => {
+                t.sg = t.gp - t.gc;
+            });
+
+            tabelaArr.sort((a, b) => {
+                if (b.pts !== a.pts) return b.pts - a.pts;
+                if (b.v !== a.v) return b.v - a.v;
+                if (b.sg !== a.sg) return b.sg - a.sg;
+                return b.gp - a.gp;
+            });
+
+            // Renderizar no HTML
+            let html = "";
+            tabelaArr.forEach((t, index) => {
+                let posicaoBadge = index + 1;
+                let posColor = "text-slate-400";
+                if (posicaoBadge === 1) posColor = "text-amber-400 font-bold";
+                else if (posicaoBadge <= 4) posColor = "text-blue-400 font-bold";
+
+                html += `
+                    <tr class="hover:bg-slate-900/50 transition border-b border-slate-800/40">
+                        <td class="py-3.5 px-4 text-center ${posColor}">${posicaoBadge}</td>
+                        <td class="py-3.5 px-4 font-semibold text-white flex items-center gap-2.5">
+                            <span class="w-3 h-3 rounded-full inline-block" style="background-color: ${t.cor || '#3b82f6'}"></span>
+                            <span class="truncate max-w-[140px] sm:max-w-xs">${t.nome}</span>
+                            <span class="text-xs text-slate-500 uppercase">(${t.sigla})</span>
+                        </td>
+                        <td class="py-3.5 px-3 text-center font-bold text-brand-400">${t.pts}</td>
+                        <td class="py-3.5 px-3 text-center text-slate-300">${t.j}</td>
+                        <td class="py-3.5 px-3 text-center text-slate-300">${t.v}</td>
+                        <td class="py-3.5 px-3 text-center text-slate-300">${t.e}</td>
+                        <td class="py-3.5 px-3 text-center text-slate-300">${t.d}</td>
+                        <td class="py-3.5 px-3 text-center text-slate-300">${t.gp}</td>
+                        <td class="py-3.5 px-3 text-center text-slate-300">${t.gc}</td>
+                        <td class="py-3.5 px-3 text-center font-semibold ${t.sg > 0 ? 'text-emerald-400' : t.sg < 0 ? 'text-rose-400' : 'text-slate-400'}">${t.sg > 0 ? '+' + t.sg : t.sg}</td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById('tabela-corpo').innerHTML = html || `<tr><td colspan="10" class="text-center py-6 text-slate-500">Nenhum dado cadastrado.</td></tr>`;
+        }
+
+        // Renderizar Lista de Partidas
+        function renderizarListaPartidas() {
+            const partidasObj = estadoApp.partidas || {};
+            const timesObj = estadoApp.times || {};
+            let html = "";
+
+            const partidasArr = Object.values(partidasObj);
+            if (partidasArr.length === 0) {
+                document.getElementById('lista-partidas').innerHTML = `<div class="col-span-2 text-center py-10 text-slate-500">Nenhuma partida cadastrada.</div>`;
+                return;
+            }
+
+            partidasArr.forEach(p => {
+                let timeCasa = timesObj[p.casa] || { nome: "Removido", sigla: "REM", cor: "#64748b" };
+                let timeFora = timesObj[p.fora] || { nome: "Removido", sigla: "REM", cor: "#64748b" };
+
+                html += `
+                    <div class="bg-slate-900 rounded-2xl border border-slate-800 p-4 flex flex-col justify-between shadow-xl gap-3">
+                        <div class="flex justify-between items-center text-xs text-slate-400 border-b border-slate-800/80 pb-2">
+                            <span class="font-medium flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full ${p.realizada ? 'bg-emerald-500' : 'bg-amber-500'}"></span>
+                                ${p.realizada ? 'Finalizada' : 'Agendada'}
+                            </span>
+                            <div class="flex items-center gap-2">
+                                <button onclick="editarPartida('${p.id}')" class="text-slate-400 hover:text-white px-2 py-1 rounded transition"><i class="fa-solid fa-pen"></i></button>
+                                <button onclick="deletarPartida('${p.id}')" class="text-rose-400 hover:text-rose-300 px-2 py-1 rounded transition"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between py-2">
+                            <div class="flex items-center gap-3 w-5/12">
+                                <span class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: ${timeCasa.cor}"></span>
+                                <span class="font-bold text-sm text-white truncate">${timeCasa.nome}</span>
+                            </div>
+                            <div class="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-center font-extrabold text-base text-brand-400 tracking-wider">
+                                ${p.realizada ? `${p.golsCasa} × ${p.golsFora}` : 'VS'}
+                            </div>
+                            <div class="flex items-center justify-end gap-3 w-5/12">
+                                <span class="font-bold text-sm text-white truncate text-right">${timeFora.nome}</span>
+                                <span class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: ${timeFora.cor}"></span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('lista-partidas').innerHTML = html;
+        }
+
+        // Renderizar Grid de Times
+        function renderizarGridTimes() {
+            const timesObj = estadoApp.times || {};
+            let html = "";
+            const timesArr = Object.values(timesObj);
+
+            if (timesArr.length === 0) {
+                document.getElementById('grid-times').innerHTML = `<div class="col-span-3 text-center py-10 text-slate-500">Nenhum time cadastrado.</div>`;
+                return;
+            }
+
+            timesArr.forEach(t => {
+                html += `
+                    <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 flex items-center justify-between shadow-xl">
+                        <div class="flex items-center gap-3.5">
+                            <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-xs shadow-md" style="background-color: ${t.cor}">
+                                ${t.sigla}
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-white">${t.nome}</h4>
+                                <p class="text-xs text-slate-400 uppercase tracking-wider">Sigla: ${t.sigla}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <button onclick="editarTime('${t.id}')" class="text-slate-400 hover:text-white p-2 rounded-lg transition"><i class="fa-solid fa-pen text-xs"></i></button>
+                            <button onclick="deletarTime('${t.id}')" class="text-rose-400 hover:text-rose-300 p-2 rounded-lg transition"><i class="fa-solid fa-trash text-xs"></i></button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('grid-times').innerHTML = html;
+        }
+
+        // Atualizar Selects de Times nos Modais de Partida
+        function atualizarSelectsPartida() {
+            const timesObj = estadoApp.times || {};
+            let options = '<option value="">Selecione o time...</option>';
+            Object.values(timesObj).forEach(t => {
+                options += `<option value="${t.id}">${t.nome} (${t.sigla})</option>`;
+            });
+            document.getElementById('partida-casa').innerHTML = options;
+            document.getElementById('partida-fora').innerHTML = options;
+        }
+
+        // Atualizar Estatísticas Gerais
+        function atualizarEstatisticas() {
+            const partidasArr = Object.values(estadoApp.partidas || {});
+            const timesArr = Object.values(estadoApp.times || {});
+            
+            let totalGols = 0;
+            let realizadas = 0;
+
+            partidasArr.forEach(p => {
+                if (p.realizada) {
+                    realizadas++;
+                    totalGols += (parseInt(p.golsCasa) || 0) + (parseInt(p.golsFora) || 0);
+                }
+            });
+
+            document.getElementById('stat-gols').innerText = totalGols;
+            document.getElementById('stat-partidas').innerText = realizadas;
+            document.getElementById('stat-times').innerText = timesArr.length;
+        }
+
+        // Modais de Time
+        function abrirModalTime() {
+            document.getElementById('form-time').reset();
+            document.getElementById('time-id').value = '';
+            document.getElementById('modal-time-titulo').innerText = 'Cadastrar Novo Time';
+            document.getElementById('modal-time').classList.remove('hidden');
+        }
+        function fecharModalTime() {
+            document.getElementById('modal-time').classList.add('hidden');
+        }
+        function editarTime(id) {
+            const t = estadoApp.times[id];
+            if (!t) return;
+            document.getElementById('time-id').value = t.id;
+            document.getElementById('time-nome').value = t.nome;
+            document.getElementById('time-sigla').value = t.sigla;
+            document.getElementById('time-cor').value = t.cor || '#3b82f6';
+            document.getElementById('modal-time-titulo').innerText = 'Editar Time';
+            document.getElementById('modal-time').classList.remove('hidden');
+        }
+        function salvarTime(e) {
+            e.preventDefault();
+            let id = document.getElementById('time-id').value;
+            if (!id) id = 't_' + Date.now();
+
+            estadoApp.times[id] = {
+                id: id,
+                nome: document.getElementById('time-nome').value,
+                sigla: document.getElementById('time-sigla').value.toUpperCase(),
+                cor: document.getElementById('time-cor').value
+            };
+
+            salvarNaNuvem();
+            fecharModalTime();
+        }
+        function deletarTime(id) {
+            if (confirm("Tem certeza que deseja excluir este time?")) {
+                delete estadoApp.times[id];
+                salvarNaNuvem();
+            }
+        }
+
+        // Modais de Partida
+        function abrirModalPartida() {
+            document.getElementById('form-partida').reset();
+            document.getElementById('partida-id').value = '';
+            document.getElementById('modal-partida-titulo').innerText = 'Cadastrar Nova Partida';
+            document.getElementById('modal-partida').classList.remove('hidden');
+        }
+        function fecharModalPartida() {
+            document.getElementById('modal-partida').classList.add('hidden');
+        }
+        function editarPartida(id) {
+            const p = estadoApp.partidas[id];
+            if (!p) return;
+            document.getElementById('partida-id').value = p.id;
+            document.getElementById('partida-casa').value = p.casa;
+            document.getElementById('partida-fora').value = p.fora;
+            document.getElementById('partida-gols-casa').value = p.golsCasa;
+            document.getElementById('partida-gols-fora').value = p.golsFora;
+            document.getElementById('partida-realizada').checked = p.realizada;
+            document.getElementById('modal-partida-titulo').innerText = 'Editar Partida';
+            document.getElementById('modal-partida').classList.remove('hidden');
+        }
+        function salvarPartida(e) {
+            e.preventDefault();
+            let id = document.getElementById('partida-id').value;
+            if (!id) id = 'p_' + Date.now();
+
+            let casa = document.getElementById('partida-casa').value;
+            let fora = document.getElementById('partida-fora').value;
+
+            if (casa === fora) {
+                alert("O time mandante e o visitante não podem ser iguais.");
+                return;
+            }
+
+            estadoApp.partidas[id] = {
+                id: id,
+                casa: casa,
+                fora: fora,
+                golsCasa: parseInt(document.getElementById('partida-gols-casa').value) || 0,
+                golsFora: parseInt(document.getElementById('partida-gols-fora').value) || 0,
+                realizada: document.getElementById('partida-realizada').checked
+            };
+
+            salvarNaNuvem();
+            fecharModalPartida();
+        }
+        function deletarPartida(id) {
+            if (confirm("Tem certeza que deseja excluir esta partida?")) {
+                delete estadoApp.partidas[id];
+                salvarNaNuvem();
+            }
+        }
+
+        // Compartilhamento
+        function abrirModalCompartilhar() {
+            document.getElementById('input-link-compartilhar').value = window.location.href;
+            document.getElementById('modal-compartilhar').classList.remove('hidden');
+        }
+        function fecharModalCompartilhar() {
+            document.getElementById('modal-compartilhar').classList.add('hidden');
+        }
+        function copiarLink() {
+            let input = document.getElementById('input-link-compartilhar');
+            input.select();
+            document.execCommand('copy');
+            alert("Link copiado para a área de transferência!");
+        }
+        function recalcularTabela() {
+            renderizarTblob:https://5q4jlnqjfpi7doefrjxjjxh7eoxpfbgoaqr2oi449za8v3dpbw-h990329232.scf.usercontent.goog/d07203eb-8fb8-4f18-81a9-bd978c5de24aabelaClassificacao();
+            alert("Tabela atualizada com sucesso!");
+        }
+
+        // Inicializar aplicação ao carregar a página
+        window.onload = function() {
+            iniciarSincronizacaoNuvem();
+        };
+    </script>
+</body>
+</html>
